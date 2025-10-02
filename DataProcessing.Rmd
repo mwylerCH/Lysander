@@ -1,0 +1,187 @@
+---
+title: "Lysander AIV"
+output: html_document
+date: "2024-01-09"
+---
+
+# VARIABLES
+
+```{sh}
+TEMPDIR="$HOME/temp_Lysander"
+mkdir -p $TEMPDIR
+export PATH="$PATH:$HOME/seqtk"
+module load parallel/20210622-GCCcore-10.3.0
+
+
+module load Anaconda3
+source activate famsa
+
+```
+
+test Ubelix for large scale classification of AIV genotypes
+Transfer copy of GISAID fastas: 
+scp /home/mwyler/GISAID_H5SequenceAvian_04102024.fa.gz mw23o336@submit02.unibe.ch:/storage/homefs/mw23o336/temp_Lysander
+
+
+scp /home/mwyler/GISAID_HPAI_NAmerica_05042024.fasta mw23o336@submit02.unibe.ch:/storage/homefs/mw23o336/temp_Lysander
+
+scp /home/mwyler/USA_H5_Animal_27052024.fa.gz mw23o336@submit02.unibe.ch:/storage/homefs/mw23o336/temp_Lysander
+
+scp /home/mwyler/African_H5_Avian_27052024.fa.gz mw23o336@submit02.unibe.ch:/storage/homefs/mw23o336/temp_Lysander
+
+## Preparation
+
+scp /home/mwyler/Software/fastaNucCleaner.pl mw23o336@submit02.unibe.ch:/storage/homefs/mw23o336/
+
+scp /home/mwyler/Software/famsa mw23o336@submit02.unibe.ch:/storage/homefs/mw23o336/
+
+```{sh}
+# install genotype classifier
+git clone https://github.com/mwylerCH/InfluenzaClassifier
+sed -i 's Software/  g' InfluenzaClassifier/MAIN.pl
+
+# modules needed (module load Go/1.20.4)
+# MAFFT/7.487-gompi-2021a-with-extensions
+# R/4.1.0-foss-2021a
+# Go/1.20.4
+
+# install missing fasttree
+wget http://www.microbesonline.org/fasttree/FastTree -O fasttree
+chmod +x fasttree
+
+# install missing gotree
+wget https://github.com/evolbioinfo/gotree/releases/download/v0.4.5/gotree_v0.4.5_amd64_linux -O gotree
+chmod +x gotree
+
+# install seqtk for fasta processing
+git clone https://github.com/lh3/seqtk.git;
+cd seqtk; make ; cd
+
+# install FAMSA
+module load Anaconda3
+conda create -n famsa
+source activate famsa
+conda install -c conda-forge libstdcxx-ng=12
+conda install bioconda::famsa
+conda install bioconda::cd-hit
+ 
+# install TrimAl
+conda install bioconda::trimal
+
+
+```
+
+## Fasta Prep
+
+```{sh}
+# split up into new folder (and clean)
+mkdir -p $TEMPDIR/singleGeno
+perl $HOME/fastaNucCleaner.pl $TEMPDIR/GISAID_H5SequenceAvian_04102024.fa > $TEMPDIR/clean.fa
+perl $HOME/fastaNucCleaner.pl $TEMPDIR/GISAID_HPAI_NAmerica_05042024.fasta >> $TEMPDIR/clean.fa
+perl $HOME/fastaNucCleaner.pl $TEMPDIR/USA_H5_Animal_27052024.fa >> $TEMPDIR/clean.fa
+perl $HOME/fastaNucCleaner.pl $TEMPDIR/African_H5_Avian_27052024.fa >> $TEMPDIR/clean.fa
+
+# split
+cat $TEMPDIR/clean.fa | fgrep '>' | awk -F"|" '{print $2}' | sort | uniq -c | awk '{if($1 == 8) print $2}' | fgrep -v '(' | grep '^A/' | while read line; do
+  NAME=`echo $line | sed 's/\//_/g'`
+  OUT=`echo $TEMPDIR/singleGeno/${NAME}.fa`
+  fgrep $line $TEMPDIR/clean.fa | sed 's/>//g' > $TEMPDIR/tempNames.txt
+  seqtk subseq $TEMPDIR/clean.fa $TEMPDIR/tempNames.txt > $OUT
+done
+
+# check if all files contain 8 segments
+# make a list of files
+fgrep '>' $TEMPDIR/singleGeno/*fa | awk -F":" '{print $1}' | sort | uniq -c | awk '{if($1 == 8) print $2}' > ${TEMPDIR}/nomiFasta.txt
+# remove others (double entries, 16 segments)
+ls $TEMPDIR/singleGeno/*fa | fgrep -vf ${TEMPDIR}/nomiFasta.txt | while read line; do rm $line; done
+```
+
+
+## US Classification
+
+Installation GenoFLU v 1.06
+genin2 v.2.1.2
+https://github.com/USDA-VS/GenoFLU
+
+```{sh}
+module load Anaconda3
+conda create -n GenoFLu
+source activate GenoFLu
+conda install GenoFlU -c conda-forge -c bioconda
+conda install anaconda::pip 
+pip install genin2
+conda install bioconda::perl-list-moreutils
+conda install bioconda::hmmer
+ 
+# test 
+genoflu.py -f test-genome-A1.fasta
+```
+
+
+```{sh}
+module load Anaconda3
+source activate GenoFLu
+
+# genotype using GenoFlu$
+mkdir -p $TEMPDIR/genoflu_out
+# because of bad programming, needs to be run in folder
+cd $TEMPDIR/singleGeno/
+sbatch --ntasks=1 --cpus-per-task=1 $TEMPDIR/submissionUSA.sh
+cd
+
+# merge US class
+cat $TEMPDIR/genoflu_out/USclass_A*.tsv | awk -F"\t" '{print $3 "\t" $4}' | fgrep 'File Name' | uniq > $TEMPDIR/US_classification.txt
+cat $TEMPDIR/genoflu_out/USclass_A*.tsv | awk -F"\t" '{print $3 "\t" $4}' | fgrep -v 'File Name' >> $TEMPDIR/US_classification.txt
+
+```
+
+
+## European Classification
+https://github.com/izsvenezie-virology/genin2
+```{sh}
+module load Anaconda3
+source activate GenoFLu
+
+mkdir -p $TEMPDIR/genin2_out
+
+# classify (and header modification)
+sbatch --ntasks=1 --cpus-per-task=1 $TEMPDIR/submissionEU.sh
+
+# make single file
+cat $TEMPDIR/genin2_out/*tsv | fgrep -v Sub-genotype | awk '{print $1 "\t" $2}' > $TEMPDIR/EU_classification.txt
+
+```
+
+## distance matrix
+
+```{sh}
+
+# split up into fasta for each segment
+mkdir -p $TEMPDIR/eachSeg
+rm $TEMPDIR/eachSeg/*
+for SEG in HA MP NA NP NS PA PB1 PB2; do
+  fgrep "|$SEG|" $TEMPDIR/clean.fa | sort | uniq | sed 's/>//' > $TEMPDIR/eachSeg/tempNames
+  seqtk subseq $TEMPDIR/clean.fa $TEMPDIR/eachSeg/tempNames > $TEMPDIR/eachSeg/Segment_$SEG.fa
+  # cluster
+  sbatch --job-name="Ref_clust" --mem-per-cpu=50G --cpus-per-task=10 --wrap "cd-hit-est -i $TEMPDIR/eachSeg/Segment_$SEG.fa -o $TEMPDIR/eachSeg/Segment_$SEG.est -c 0.95 -n 10 -d 0 -M 500000 -T 10"
+done
+
+# make list of references
+for SEG in HA MP NA NP NS PA PB1 PB2; do
+  fgrep '>' $TEMPDIR/eachSeg/Segment_$SEG.est | sed 's/>//' | awk '{print $0 "\t" var}' var=$SEG
+done > $TEMPDIR/ReferenceNames.txt
+
+# calculate distance
+source activate famsa
+ls $TEMPDIR/eachSeg/Segment_*.fa > $TEMPDIR/fileToAlign.txt
+sbatch --ntasks=1 --cpus-per-task=20 $TEMPDIR/submissionALN.sh
+#Segment_NP.DistMatrix
+
+
+
+```
+
+
+scp mw23o336@submit02.unibe.ch:/storage/homefs/mw23o336/temp_AIVclass/ReferenceNames.txt /home/mwyler/temp_AIVpca
+scp mw23o336@submit02.unibe.ch:/storage/homefs/mw23o336/temp_AIVclass/Segment_*.DistMatrix /home/mwyler/temp_AIVpca
+
