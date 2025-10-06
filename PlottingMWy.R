@@ -126,7 +126,7 @@ PCAtable <- PCAtable[!duplicated(as.list(PCAtable))]
 #  filter(grepl('22P015977', V1))
 
 # problem with A_turkey_Germany-BB_AI00868_2021
-PCAtable <- PCAtable[!is.na(PCAtable$`A_/_H5N1|A/American_Crow/BC/AIVPHL-1384/2023|PB2|1|EPI_ISL_18665536`), ]
+# PCAtable <- PCAtable[!is.na(PCAtable$`A_/_H5N1|A/American_Crow/BC/AIVPHL-1384/2023|PB2|1|EPI_ISL_18665536`), ]
 
 # split up for lysander
 tab1 <- PCAtable[1:3000,]
