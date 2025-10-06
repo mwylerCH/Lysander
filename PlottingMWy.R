@@ -128,6 +128,13 @@ PCAtable <- PCAtable[!duplicated(as.list(PCAtable))]
 # problem with A_turkey_Germany-BB_AI00868_2021
 PCAtable <- PCAtable[!is.na(PCAtable$`A_/_H5N1|A/American_Crow/BC/AIVPHL-1384/2023|PB2|1|EPI_ISL_18665536`), ]
 
+# split up for lysander
+tab1 <- PCAtable[1:3000,]
+tab2 <- PCAtable[3001:6000,]
+tab3 <- PCAtable[6001:nrow(PCAtable),]
+fwrite(tab1, file = '//wsl.localhost/Ubuntu-22.04/home/mwyler/temp_AIVpca/forLysander_Tab1.csv')
+fwrite(tab2, file = '//wsl.localhost/Ubuntu-22.04/home/mwyler/temp_AIVpca/forLysander_Tab2.csv')
+fwrite(tab3, file = '//wsl.localhost/Ubuntu-22.04/home/mwyler/temp_AIVpca/forLysander_Tab3.csv')
 
 ## American Classification ----------------------------
 
