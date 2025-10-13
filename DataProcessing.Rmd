@@ -184,4 +184,3 @@ sbatch --ntasks=1 --cpus-per-task=20 $TEMPDIR/submissionALN.sh
 
 scp mw23o336@submit02.unibe.ch:/storage/homefs/mw23o336/temp_AIVclass/ReferenceNames.txt /home/mwyler/temp_AIVpca
 scp mw23o336@submit02.unibe.ch:/storage/homefs/mw23o336/temp_AIVclass/Segment_*.DistMatrix /home/mwyler/temp_AIVpca
-
